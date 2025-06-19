@@ -1,0 +1,10 @@
+{
+  "nuxtr.vueFiles.style.alwaysScoped": true,
+  "css.lint.unknownAtRules": "ignore",
+  "files.associations": {
+    "*.css": "tailwindcss",
+  },
+  "editor.quickSuggestions": {
+    "strings": "on"
+  },
+}
