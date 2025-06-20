@@ -6,9 +6,12 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 COPY packages/diff-lib/package.json ./packages/diff-lib/
 COPY packages/ws-client/package.json ./packages/ws-client/
+
 RUN npm install -g pnpm && pnpm install
 
 COPY . .
+
+RUN pnpm --filter ./packages/*... run build
 
 WORKDIR /app/apps/backend
 

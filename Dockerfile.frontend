@@ -10,6 +10,8 @@ RUN npm install -g pnpm && pnpm install
 
 COPY . .
 
+RUN pnpm --filter ./packages/*... run build
+
 WORKDIR /app/apps/app
 
 RUN pnpm build
