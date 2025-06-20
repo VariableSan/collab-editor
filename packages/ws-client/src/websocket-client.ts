@@ -1,8 +1,8 @@
 import {
   ClientInfo,
   ConnectionState,
-  Diff,
   DiffLib,
+  DiffOperation,
   DiffOperationMessage,
   DocumentStateMessage,
   DocumentSyncState,
@@ -12,9 +12,6 @@ import {
   WebSocketMessage,
 } from './types'
 
-/**
- * WebSocket client with diff-based synchronization
- */
 export class WebSocketClient {
   private config: Required<WebSocketClientConfig>
   private ws: WebSocket | null = null
@@ -56,9 +53,6 @@ export class WebSocketClient {
     this.clientId = this.generateClientId()
   }
 
-  /**
-   * Connect to the WebSocket server
-   */
   public async connect(): Promise<void> {
     if (
       this.connectionState === ConnectionState.CONNECTED ||
@@ -73,7 +67,6 @@ export class WebSocketClient {
       try {
         this.ws = new WebSocket(this.config.url, this.config.protocols)
 
-        // Set up connection timeout
         this.connectionTimer = setTimeout(() => {
           this.handleConnectionTimeout()
           reject(new Error('Connection timeout'))
@@ -103,9 +96,6 @@ export class WebSocketClient {
     })
   }
 
-  /**
-   * Disconnect from the WebSocket server
-   */
   public disconnect(): void {
     this.clearTimers()
     this.reconnectAttempts = 0
@@ -118,9 +108,6 @@ export class WebSocketClient {
     this.setConnectionState(ConnectionState.DISCONNECTED)
   }
 
-  /**
-   * Send a diff operation to the server
-   */
   public async sendDiffOperation(
     oldText: string,
     newText: string,
@@ -143,7 +130,6 @@ export class WebSocketClient {
 
       this.sendMessage(message)
 
-      // Update local state optimistically
       this.documentState.content = newText
       this.documentState.version += 1
       this.documentState.lastSync = Date.now()
@@ -153,11 +139,8 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Apply a received diff operation to local content
-   */
   public async applyDiffOperation(
-    operations: Diff,
+    operations: DiffOperation[],
     baseContent?: string,
   ): Promise<string> {
     const content = baseContent || this.documentState.content
@@ -171,9 +154,6 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Request full document state from server
-   */
   public requestDocumentState(): void {
     if (!this.isConnected()) {
       throw new Error('Not connected to server')
@@ -188,23 +168,14 @@ export class WebSocketClient {
     this.sendMessage(message)
   }
 
-  /**
-   * Get current connection state
-   */
   public getConnectionState(): ConnectionState {
     return this.connectionState
   }
 
-  /**
-   * Get current document state
-   */
   public getDocumentState(): DocumentSyncState {
     return { ...this.documentState }
   }
 
-  /**
-   * Get client information
-   */
   public getClientInfo(): ClientInfo {
     return {
       id: this.clientId,
@@ -213,24 +184,15 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Update event listeners
-   */
   public updateListeners(listeners: Partial<WebSocketEventListeners>): void {
     this.listeners = { ...this.listeners, ...listeners }
   }
 
-  /**
-   * Dispose resources
-   */
   public dispose(): void {
     this.disconnect()
     this.diffLib.dispose()
   }
 
-  /**
-   * Check if client is connected
-   */
   private isConnected(): boolean {
     return (
       this.ws !== null &&
@@ -239,30 +201,21 @@ export class WebSocketClient {
     )
   }
 
-  /**
-   * Handle connection open
-   */
   private handleConnectionOpen(): void {
     this.clearConnectionTimer()
     this.setConnectionState(ConnectionState.CONNECTED)
     this.reconnectAttempts = 0
     this.startPingTimer()
 
-    // Request initial document state
     this.requestDocumentState()
   }
 
-  /**
-   * Handle incoming messages
-   */
   private handleMessage(event: MessageEvent): void {
     try {
       const message: WebSocketMessage = JSON.parse(event.data)
 
-      // Update last activity
       this.documentState.lastSync = Date.now()
 
-      // Handle different message types
       switch (message.type) {
         case MessageType.DOCUMENT_STATE:
           this.handleDocumentStateMessage(message as DocumentStateMessage)
@@ -283,20 +236,15 @@ export class WebSocketClient {
           this.handlePing()
           break
         case MessageType.PONG:
-          // Pong received, connection is healthy
           break
       }
 
-      // Notify general message listener
       this.listeners.onMessage?.(message)
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error)
     }
   }
 
-  /**
-   * Handle document state message
-   */
   private handleDocumentStateMessage(message: DocumentStateMessage): void {
     this.documentState = {
       content: message.content,
@@ -309,13 +257,9 @@ export class WebSocketClient {
     this.listeners.onDocumentState?.(message)
   }
 
-  /**
-   * Handle diff operation message
-   */
   private async handleDiffOperationMessage(
     message: DiffOperationMessage,
   ): Promise<void> {
-    // Don't apply operations from this client
     if (message.originClientId === this.clientId) {
       return
     }
@@ -337,14 +281,11 @@ export class WebSocketClient {
       this.listeners.onDiffOperation?.(message)
     } catch (error) {
       console.error('Failed to apply received diff operation:', error)
-      // Request full document state to resync
+
       this.requestDocumentState()
     }
   }
 
-  /**
-   * Handle ping message
-   */
   private handlePing(): void {
     const pongMessage = {
       type: MessageType.PONG,
@@ -355,9 +296,6 @@ export class WebSocketClient {
     this.sendMessage(pongMessage)
   }
 
-  /**
-   * Handle connection close
-   */
   private handleConnectionClose(event: CloseEvent): void {
     this.clearTimers()
 
@@ -369,18 +307,12 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Handle connection error
-   */
   private handleConnectionError(event: Event): void {
     this.clearTimers()
     this.setConnectionState(ConnectionState.ERROR)
     this.scheduleReconnect()
   }
 
-  /**
-   * Handle connection timeout
-   */
   private handleConnectionTimeout(): void {
     this.clearConnectionTimer()
 
@@ -393,9 +325,6 @@ export class WebSocketClient {
     this.scheduleReconnect()
   }
 
-  /**
-   * Schedule reconnection attempt
-   */
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
       this.setConnectionState(ConnectionState.ERROR)
@@ -413,9 +342,6 @@ export class WebSocketClient {
     }, this.config.reconnectInterval)
   }
 
-  /**
-   * Start ping timer for connection health
-   */
   private startPingTimer(): void {
     this.pingTimer = setInterval(() => {
       if (this.isConnected()) {
@@ -430,9 +356,6 @@ export class WebSocketClient {
     }, this.config.pingInterval)
   }
 
-  /**
-   * Send message to server
-   */
   private sendMessage(message: any): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message))
@@ -441,9 +364,6 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Set connection state and notify listeners
-   */
   private setConnectionState(state: ConnectionState): void {
     if (this.connectionState !== state) {
       this.connectionState = state
@@ -451,18 +371,12 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Clear all timers
-   */
   private clearTimers(): void {
     this.clearConnectionTimer()
     this.clearReconnectTimer()
     this.clearPingTimer()
   }
 
-  /**
-   * Clear connection timer
-   */
   private clearConnectionTimer(): void {
     if (this.connectionTimer) {
       clearTimeout(this.connectionTimer)
@@ -470,9 +384,6 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Clear reconnect timer
-   */
   private clearReconnectTimer(): void {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
@@ -480,9 +391,6 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Clear ping timer
-   */
   private clearPingTimer(): void {
     if (this.pingTimer) {
       clearInterval(this.pingTimer)
@@ -490,9 +398,6 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Generate unique client ID
-   */
   private generateClientId(): string {
     return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createWebSocketClient } from '../src/index'
-import { DiffLib } from '../src/types'
+import { DiffLib, DiffResult } from '../src/types'
 import { WebSocketClient } from '../src/websocket-client'
 
 describe('createWebSocketClient factory', () => {
@@ -50,14 +50,14 @@ describe('exports', () => {
 })
 
 class Diff extends DiffLib {
-  public calculateDiff(
-    oldText: string,
-    newText: string,
-    config?: any,
-  ): Promise<any> {
-    return Promise.resolve()
+  public calculateDiff(): Promise<DiffResult> {
+    return Promise.resolve({
+      operations: [],
+      oldLength: 0,
+      newLength: 0,
+    })
   }
-  public applyDiff(text: string, operations: any[]): Promise<string> {
+  public applyDiff(): Promise<string> {
     return Promise.resolve('')
   }
   public dispose(): void {}
