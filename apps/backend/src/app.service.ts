@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common'
+import type { Diff } from 'diff-lib'
+import { simpleDiff } from 'diff-lib'
 
 @Injectable()
 export class AppService {
-  getHello(): string {
-    return 'Hello World!'
+  getHello(): Diff {
+    return simpleDiff('asd', 'asdx')
   }
 }

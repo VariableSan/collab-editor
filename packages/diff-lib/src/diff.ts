@@ -1,4 +1,4 @@
-import { Diff, DiffOp } from './types'
+import type { Diff, DiffOp } from './types'
 
 export function simpleDiff(a: string, b: string): Diff {
   const minLen = Math.min(a.length, b.length)
