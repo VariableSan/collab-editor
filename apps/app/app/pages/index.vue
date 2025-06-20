@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { simpleDiff } from 'diff-lib'
+import { DiffAlgorithm } from 'diff-lib'
 
 const isDark = useDark({
   selector: 'body',
@@ -14,7 +14,11 @@ const toggleDark = useToggle(isDark)
 const oldText = ref('')
 const newText = ref('')
 
-const getDiff = computed(() => simpleDiff(oldText.value, newText.value))
+const diffAlgorithm = new DiffAlgorithm()
+
+const getDiff = computed(() =>
+  diffAlgorithm.simpleDiff(oldText.value, newText.value),
+)
 </script>
 
 <template>
