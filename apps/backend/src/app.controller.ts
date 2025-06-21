@@ -1,5 +1,4 @@
 import { Controller, Get } from '@nestjs/common'
-import { DiffOperation } from 'diff-lib'
 import { AppService } from './app.service'
 
 @Controller()
@@ -7,7 +6,7 @@ export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @Get()
-  getHello(): DiffOperation[] {
+  getHello(): string {
     return this.appService.getHello()
   }
 }

@@ -1,2 +1,1 @@
-export * from './diff'
-export * from './types'
+export { DiffLib } from './diff-lib'
