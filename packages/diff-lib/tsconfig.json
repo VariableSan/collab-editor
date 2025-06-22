@@ -8,11 +8,6 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "tests",
-    "dist"
-  ]
+  "include": ["src"],
+  "exclude": ["tests", "dist"]
 }
