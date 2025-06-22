@@ -9,7 +9,7 @@
     "build:packages": "pnpm --filter ./packages/* run build",
     "preview": "pnpm -r --filter ./apps/app --filter ./apps/backend run preview",
     "prepare": "husky install",
-    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,vue,json,css,scss,md,html,yml,yaml,mdx,graphql,gql}\""
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,vue,json,css,scss,md,html}\""
   },
   "keywords": [],
   "author": "",
