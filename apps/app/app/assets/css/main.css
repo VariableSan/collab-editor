@@ -32,6 +32,11 @@
   --text: #e5e7eb;
 }
 
+@utility container {
+  @apply mx-auto w-full px-4;
+  max-width: var(--container);
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);

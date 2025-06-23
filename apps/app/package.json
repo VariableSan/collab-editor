@@ -18,7 +18,8 @@
     "nuxt": "^3.17.5",
     "tailwindcss": "^4.1.10",
     "vue": "^3.5.17",
-    "diff-lib": "workspace:*"
+    "diff-lib": "workspace:*",
+    "ws-client": "workspace:*"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.4.1",
