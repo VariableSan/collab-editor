@@ -25,5 +25,8 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
   }
 }

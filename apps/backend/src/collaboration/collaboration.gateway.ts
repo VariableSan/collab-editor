@@ -8,17 +8,11 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets'
-import { Server } from 'socket.io'
-import { WebSocket } from 'ws'
+import { Server, Socket } from 'socket.io'
 import { CollaborationService } from './collaboration.service'
 
-interface WSClient extends WebSocket {
-  id: string
-  isAlive: boolean
-}
-
 @WebSocketGateway({
-  namespace: 'collaborate',
+  namespace: '/collaborate',
   cors: {
     origin: '*',
   },
@@ -30,38 +24,42 @@ export class CollaborationGateway
   server: Server
 
   private readonly logger = new Logger(CollaborationGateway.name)
-  private clients = new Map<string, WSClient>()
 
   constructor(private readonly collaborationService: CollaborationService) {}
 
-  handleConnection(client: WSClient): void {
-    client.id = this.generateClientId()
-    client.isAlive = true
-
-    this.clients.set(client.id, client)
+  handleConnection(client: Socket): void {
     this.logger.log(`Client connected: ${client.id}`)
 
     const initData = this.collaborationService.getInitialState()
-    this.sendToClient(client, {
+
+    // Отправляем через Socket.IO событие
+    client.emit(
+      'message',
+      JSON.stringify({
+        type: 'init',
+        data: initData,
+      }),
+    )
+
+    // Или напрямую типизированное событие
+    /* client.emit('init', {
       type: 'init',
       data: initData,
-    })
-    ;(client as any)?.on('pong', () => {
-      client.isAlive = true
-    })
+    }) */
   }
 
-  handleDisconnect(client: WSClient): void {
+  handleDisconnect(client: Socket): void {
     this.logger.log(`Client disconnected: ${client.id}`)
-    this.clients.delete(client.id)
   }
 
   @SubscribeMessage('diff')
   handleDiff(
     @MessageBody() data: any,
-    @ConnectedSocket() client: WSClient,
+    @ConnectedSocket() client: Socket,
   ): void {
     try {
+      this.logger.log('Received diff:', data)
+
       const result = this.collaborationService.applyDiff(
         data.data.diff,
         data.data.version,
@@ -69,7 +67,8 @@ export class CollaborationGateway
       )
 
       if (result.success) {
-        this.sendToClient(client, {
+        // Отправляем подтверждение
+        client.emit('ack', {
           type: 'ack',
           id: data.id,
           data: {
@@ -78,62 +77,57 @@ export class CollaborationGateway
           },
         })
 
-        this.broadcastDiff(client.id, {
+        // Рассылаем всем кроме отправителя
+        client.broadcast.emit(
+          'message',
+          JSON.stringify({
+            type: 'diff',
+            data: {
+              diff: data.data.diff,
+              version: result.version,
+            },
+          }),
+        )
+
+        // Или напрямую
+        /* client.broadcast.emit('diff', {
           type: 'diff',
           data: {
             diff: data.data.diff,
             version: result.version,
           },
-        })
+        }) */
       } else {
         this.sendFullSync(client)
       }
     } catch (error) {
-      this.logger.error(`Error applying diff: ${error.message}`)
+      this.logger.error('Error applying diff:', error.message)
       this.sendError(client, 'Failed to apply diff')
     }
   }
 
   @SubscribeMessage('full-sync')
-  handleFullSync(@ConnectedSocket() client: WSClient): void {
+  handleFullSync(@ConnectedSocket() client: Socket): void {
     this.sendFullSync(client)
   }
 
   @SubscribeMessage('ping')
-  handlePing(@ConnectedSocket() client: WSClient): void {
-    this.sendToClient(client, { type: 'pong' })
+  handlePing(@ConnectedSocket() client: Socket): void {
+    client.emit('pong')
   }
 
-  private sendToClient(client: WSClient, message: any): void {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message))
-    }
-  }
-
-  private broadcastDiff(excludeClientId: string, message: any): void {
-    this.clients.forEach((client, clientId) => {
-      if (clientId !== excludeClientId) {
-        this.sendToClient(client, message)
-      }
-    })
-  }
-
-  private sendFullSync(client: WSClient): void {
+  private sendFullSync(client: Socket): void {
     const state = this.collaborationService.getCurrentState()
-    this.sendToClient(client, {
+    client.emit('full-sync', {
       type: 'full-sync',
       data: state,
     })
   }
 
-  private sendError(client: WSClient, message: string): void {
-    this.sendToClient(client, {
+  private sendError(client: Socket, message: string): void {
+    client.emit('error', {
       type: 'error',
       data: { message },
     })
-  }
-
-  private generateClientId(): string {
-    return `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
   }
 }

@@ -12,21 +12,22 @@ export interface DiffResult {
 }
 
 export interface WSMessage {
-  type: 'init' | 'diff' | 'full-sync' | 'error' | 'ack'
+  type: 'init' | 'diff' | 'full-sync' | 'error' | 'ack' | 'pong'
   id?: string
   data?: any
   timestamp?: number
 }
 
-export interface DiffMessage extends WSMessage {
-  type: 'diff'
+export interface DiffMessage {
+  id?: string
   data: {
     diff: DiffResult
     version?: number
   }
+  timestamp?: number
 }
 
-export interface InitMessage extends WSMessage {
+export interface InitMessage {
   type: 'init'
   data: {
     content: string
@@ -36,11 +37,10 @@ export interface InitMessage extends WSMessage {
 
 export interface WSClientOptions {
   url: string
+  namespace?: string
   reconnectInterval?: number
   maxReconnectAttempts?: number
-  heartbeatInterval?: number
   diffProvider: DiffProvider
-  workerProvider?: Worker
 }
 
 export interface WSClientEvents {

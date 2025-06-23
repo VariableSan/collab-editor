@@ -1,4 +1,5 @@
 import { EventEmitter } from 'eventemitter3'
+import { io, Socket } from 'socket.io-client'
 import {
   ClientState,
   DiffMessage,
@@ -10,21 +11,18 @@ import {
 } from './types'
 
 export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
-  private ws?: WebSocket
-  private options: WSClientOptions
+  private socket?: Socket
+  private options: Required<WSClientOptions>
   private state: ClientState
-  private reconnectAttempts = 0
-  private reconnectTimeout?: NodeJS.Timeout
-  private heartbeatInterval?: NodeJS.Timeout
   private diffProvider: DiffProvider
 
   constructor(options: WSClientOptions) {
     super()
 
     this.options = {
+      namespace: '/collaborate',
       reconnectInterval: 3000,
       maxReconnectAttempts: 5,
-      heartbeatInterval: 30000,
       ...options,
     }
 
@@ -39,12 +37,18 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   }
 
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (this.socket?.connected) {
       return
     }
 
     try {
-      this.ws = new WebSocket(this.options.url)
+      this.socket = io(this.options.url + this.options.namespace, {
+        reconnection: true,
+        reconnectionDelay: this.options.reconnectInterval,
+        reconnectionAttempts: this.options.maxReconnectAttempts,
+        transports: ['websocket', 'polling'],
+      })
+
       this.setupEventHandlers()
     } catch (error) {
       this.handleError(error as Error)
@@ -52,19 +56,17 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   }
 
   disconnect(): void {
-    this.clearTimers()
-
-    if (this.ws) {
-      this.ws.close()
-      this.ws = undefined
+    if (this.socket) {
+      this.socket.disconnect()
+      this.socket = undefined
     }
 
     this.state.connected = false
     this.emit('disconnect')
   }
 
-  async sendTextChange(newText: string): Promise<void> {
-    if (!this.state.connected || !this.ws) {
+  sendTextChange(newText: string): void {
+    if (!this.state.connected || !this.socket) {
       console.warn('Not connected to server')
       return
     }
@@ -73,7 +75,6 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
       const diff = this.diffProvider.calculate(this.state.currentText, newText)
 
       const message: DiffMessage = {
-        type: 'diff',
         id: this.generateId(),
         timestamp: Date.now(),
         data: {
@@ -82,7 +83,8 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
         },
       }
 
-      this.ws.send(JSON.stringify(message))
+      this.socket.emit('diff', message)
+
       this.state.currentText = newText
       this.state.pendingChanges.push({
         diff,
@@ -102,34 +104,58 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   }
 
   private setupEventHandlers(): void {
-    if (!this.ws) return
+    if (!this.socket) return
 
-    this.ws.onopen = () => {
+    this.socket.on('connect', () => {
       this.state.connected = true
-      this.reconnectAttempts = 0
       this.emit('connect')
-      this.startHeartbeat()
-    }
+      console.log('Socket.IO connected')
+    })
 
-    this.ws.onclose = event => {
+    this.socket.on('disconnect', reason => {
       this.state.connected = false
-      this.clearTimers()
-      this.emit('disconnect', event.reason)
-      this.attemptReconnect()
-    }
+      this.emit('disconnect', reason)
+      console.log('Socket.IO disconnected:', reason)
+    })
 
-    this.ws.onerror = event => {
-      this.handleError(new Error('WebSocket error'))
-    }
+    this.socket.on('connect_error', error => {
+      this.handleError(new Error(`Connection error: ${error.message}`))
+    })
 
-    this.ws.onmessage = event => {
+    this.socket.on('message', (data: string) => {
       try {
-        const message: WSMessage = JSON.parse(event.data)
+        const message: WSMessage = JSON.parse(data)
         this.handleMessage(message)
       } catch (error) {
         this.handleError(new Error('Failed to parse message'))
       }
-    }
+    })
+
+    this.socket.on('init', (message: InitMessage) => {
+      this.handleInit(message)
+    })
+
+    this.socket.on('diff', (message: WSMessage) => {
+      if (message.type === 'diff' && message.data) {
+        this.handleDiff(message)
+      }
+    })
+
+    this.socket.on('full-sync', (message: WSMessage) => {
+      this.handleFullSync(message)
+    })
+
+    this.socket.on('ack', (message: WSMessage) => {
+      this.handleAck(message)
+    })
+
+    this.socket.on('error', (message: WSMessage) => {
+      if (message.data?.message) {
+        this.handleError(new Error(message.data.message))
+      }
+    })
+
+    this.socket.on('pong', () => {})
   }
 
   private handleMessage(message: WSMessage): void {
@@ -138,7 +164,7 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
         this.handleInit(message as InitMessage)
         break
       case 'diff':
-        this.handleDiff(message as DiffMessage)
+        this.handleDiff(message)
         break
       case 'full-sync':
         this.handleFullSync(message)
@@ -156,9 +182,10 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
     this.state.currentText = message.data.content
     this.state.version = message.data.version
     this.emit('textChange', this.state.currentText)
+    console.log('Initialized with version:', this.state.version)
   }
 
-  private handleDiff(message: DiffMessage): void {
+  private handleDiff(message: WSMessage): void {
     try {
       const newText = this.diffProvider.apply(
         this.state.currentText,
@@ -182,6 +209,7 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
       this.state.currentText = message.data.content
       this.state.version = message.data.version || 0
       this.emit('textChange', this.state.currentText)
+      console.log('Full sync completed, version:', this.state.version)
     }
   }
 
@@ -194,46 +222,16 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   }
 
   private requestFullSync(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({
-          type: 'full-sync',
-          id: this.generateId(),
-        }),
-      )
+    if (this.socket?.connected) {
+      this.socket.emit('full-sync', {
+        id: this.generateId(),
+      })
     }
   }
 
-  private attemptReconnect(): void {
-    const attempts = this.options.maxReconnectAttempts ?? 5
-    if (this.reconnectAttempts >= attempts) {
-      this.emit('error', new Error('Max reconnection attempts reached'))
-      return
-    }
-
-    this.reconnectAttempts++
-    this.reconnectTimeout = setTimeout(() => {
-      this.connect()
-    }, this.options.reconnectInterval)
-  }
-
-  private startHeartbeat(): void {
-    this.heartbeatInterval = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'ping' }))
-      }
-    }, this.options.heartbeatInterval)
-  }
-
-  private clearTimers(): void {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout)
-      this.reconnectTimeout = undefined
-    }
-
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval)
-      this.heartbeatInterval = undefined
+  sendPing(): void {
+    if (this.socket?.connected) {
+      this.socket.emit('ping')
     }
   }
 

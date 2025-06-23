@@ -16,13 +16,13 @@ export const useCollab = () => {
     }
   }
 
-  const sendTextChangeDebounced = useDebounceFn(sendTextChange, 300)
+  const sendTextChangeDebounced = useDebounceFn(sendTextChange, 500)
 
   onMounted(() => {
     const diffProvider = new MyersDiffCalculator()
 
     wsClient = new CollaborativeWSClient({
-        url: `ws://${window.location.hostname}:4000/collaborate`,
+      url: `${window.location.hostname}:4000`,
       diffProvider,
       reconnectInterval: 3000,
       maxReconnectAttempts: 5,
