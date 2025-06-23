@@ -8,7 +8,8 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets'
-import { Server } from 'ws'
+import { Server } from 'socket.io'
+import { WebSocket } from 'ws'
 import { CollaborationService } from './collaboration.service'
 
 interface WSClient extends WebSocket {
@@ -17,7 +18,7 @@ interface WSClient extends WebSocket {
 }
 
 @WebSocketGateway({
-  path: '/collaborate',
+  namespace: 'collaborate',
   cors: {
     origin: '*',
   },
@@ -31,19 +32,7 @@ export class CollaborationGateway
   private readonly logger = new Logger(CollaborationGateway.name)
   private clients = new Map<string, WSClient>()
 
-  constructor(private readonly collaborationService: CollaborationService) {
-    // Heartbeat to check connections
-    setInterval(() => {
-      this.clients.forEach((client: any) => {
-        if (!client.isAlive) {
-          client.terminate()
-          return
-        }
-        client.isAlive = false
-        client.ping()
-      })
-    }, 30000)
-  }
+  constructor(private readonly collaborationService: CollaborationService) {}
 
   handleConnection(client: WSClient): void {
     client.id = this.generateClientId()
@@ -145,6 +134,6 @@ export class CollaborationGateway
   }
 
   private generateClientId(): string {
-    return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    return `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
   }
 }

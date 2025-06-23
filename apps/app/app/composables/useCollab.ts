@@ -1,9 +1,8 @@
 import { MyersDiffCalculator } from 'diff-lib'
-import { BrowserCollaborativeClient } from 'ws-client'
-import DiffWorker from '~/assets/workers/diff-worker?worker'
+import { CollaborativeWSClient } from 'ws-client'
 
 export const useCollab = () => {
-  let wsClient: BrowserCollaborativeClient | null = null
+  let wsClient: CollaborativeWSClient | null = null
 
   const textarea = ref('')
   const isConnected = ref(false)
@@ -12,18 +11,18 @@ export const useCollab = () => {
   let isRemoteUpdate = false
 
   const sendTextChange = (val: string) => {
-    wsClient?.sendTextChange(val)
+    if (!isRemoteUpdate && wsClient) {
+      wsClient.sendTextChange(val)
+    }
   }
 
-  const sendTextChangeDebounced = useDebounceFn(sendTextChange, 500)
+  const sendTextChangeDebounced = useDebounceFn(sendTextChange, 300)
 
   onMounted(() => {
-    const workerProvider = new DiffWorker()
     const diffProvider = new MyersDiffCalculator()
 
-    wsClient = new BrowserCollaborativeClient({
-      url: `ws://${window.location.hostname}:4000/collaborate`,
-      workerProvider,
+    wsClient = new CollaborativeWSClient({
+        url: `ws://${window.location.hostname}:4000/collaborate`,
       diffProvider,
       reconnectInterval: 3000,
       maxReconnectAttempts: 5,
@@ -55,24 +54,19 @@ export const useCollab = () => {
     })
 
     wsClient.connect()
-
-    onBeforeUnmount(() => {
-      wsClient?.disconnect()
-    })
   })
 
   watch(textarea, newValue => {
-    if (isRemoteUpdate) return
+    sendTextChangeDebounced(newValue)
+  })
 
-    if (isConnected.value) {
-      sendTextChangeDebounced(newValue)
-    }
+  onUnmounted(() => {
+    wsClient?.disconnect()
   })
 
   return {
     textarea,
     isConnected,
     error,
-    wsClient,
   }
 }

@@ -1,23 +1,14 @@
-export interface IDiffProvider {
-  calculate(
-    oldText: string,
-    newText: string,
-  ): {
-    operations: Array<{
-      type: 'insert' | 'delete' | 'retain'
-      value: string
-    }>
-    checksum?: string
-  }
-  apply(
-    text: string,
-    diff: {
-      operations: Array<{
-        type: 'insert' | 'delete' | 'retain'
-        value: string
-      }>
-    },
-  ): string
+export interface DiffProvider {
+  calculate(oldText: string, newText: string): DiffResult
+  apply(text: string, diff: DiffResult): string
+}
+
+export interface DiffResult {
+  operations: Array<{
+    type: 'insert' | 'delete' | 'retain'
+    value: string
+  }>
+  checksum?: string
 }
 
 export interface WSMessage {
@@ -30,13 +21,7 @@ export interface WSMessage {
 export interface DiffMessage extends WSMessage {
   type: 'diff'
   data: {
-    diff: {
-      operations: Array<{
-        type: 'insert' | 'delete' | 'retain'
-        value: string
-      }>
-      checksum?: string
-    }
+    diff: DiffResult
     version?: number
   }
 }
@@ -54,7 +39,8 @@ export interface WSClientOptions {
   reconnectInterval?: number
   maxReconnectAttempts?: number
   heartbeatInterval?: number
-  diffProvider: IDiffProvider
+  diffProvider: DiffProvider
+  workerProvider?: Worker
 }
 
 export interface WSClientEvents {
@@ -62,7 +48,7 @@ export interface WSClientEvents {
   disconnect: (reason?: string) => void
   error: (error: Error) => void
   textChange: (newText: string) => void
-  diffReceived: (diff: any) => void
+  diffReceived: (diff: DiffResult) => void
 }
 
 export interface ClientState {
@@ -70,7 +56,7 @@ export interface ClientState {
   currentText: string
   version: number
   pendingChanges: Array<{
-    diff: any
+    diff: DiffResult
     timestamp: number
   }>
 }

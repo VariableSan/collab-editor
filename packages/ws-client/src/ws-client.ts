@@ -2,7 +2,7 @@ import { EventEmitter } from 'eventemitter3'
 import {
   ClientState,
   DiffMessage,
-  IDiffProvider,
+  DiffProvider,
   InitMessage,
   WSClientEvents,
   WSClientOptions,
@@ -11,12 +11,12 @@ import {
 
 export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   private ws?: WebSocket
-  private options: Required<WSClientOptions>
+  private options: WSClientOptions
   private state: ClientState
   private reconnectAttempts = 0
   private reconnectTimeout?: NodeJS.Timeout
   private heartbeatInterval?: NodeJS.Timeout
-  private diffProvider: IDiffProvider
+  private diffProvider: DiffProvider
 
   constructor(options: WSClientOptions) {
     super()
@@ -63,30 +63,34 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
     this.emit('disconnect')
   }
 
-  sendTextChange(newText: string): void {
+  async sendTextChange(newText: string): Promise<void> {
     if (!this.state.connected || !this.ws) {
       console.warn('Not connected to server')
       return
     }
 
-    const diff = this.diffProvider.calculate(this.state.currentText, newText)
+    try {
+      const diff = this.diffProvider.calculate(this.state.currentText, newText)
 
-    const message: DiffMessage = {
-      type: 'diff',
-      id: this.generateId(),
-      timestamp: Date.now(),
-      data: {
+      const message: DiffMessage = {
+        type: 'diff',
+        id: this.generateId(),
+        timestamp: Date.now(),
+        data: {
+          diff,
+          version: this.state.version,
+        },
+      }
+
+      this.ws.send(JSON.stringify(message))
+      this.state.currentText = newText
+      this.state.pendingChanges.push({
         diff,
-        version: this.state.version,
-      },
+        timestamp: message.timestamp!,
+      })
+    } catch (error) {
+      this.handleError(error as Error)
     }
-
-    this.ws.send(JSON.stringify(message))
-    this.state.currentText = newText
-    this.state.pendingChanges.push({
-      diff,
-      timestamp: message.timestamp!,
-    })
   }
 
   getCurrentText(): string {
@@ -168,13 +172,13 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
       this.emit('textChange', newText)
     } catch (error) {
       this.handleError(new Error('Failed to apply diff'))
-      // Запрашиваем полную синхронизацию
+
       this.requestFullSync()
     }
   }
 
   private handleFullSync(message: WSMessage): void {
-    if (message.data?.content) {
+    if (message.data?.content !== undefined) {
       this.state.currentText = message.data.content
       this.state.version = message.data.version || 0
       this.emit('textChange', this.state.currentText)
@@ -182,7 +186,6 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   }
 
   private handleAck(message: WSMessage): void {
-    // Удаляем подтвержденные изменения из очереди
     if (message.data?.timestamp) {
       this.state.pendingChanges = this.state.pendingChanges.filter(
         change => change.timestamp > message.data.timestamp,
@@ -202,7 +205,8 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   }
 
   private attemptReconnect(): void {
-    if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
+    const attempts = this.options.maxReconnectAttempts ?? 5
+    if (this.reconnectAttempts >= attempts) {
       this.emit('error', new Error('Max reconnection attempts reached'))
       return
     }
