@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common'
-import { BaseDiffCalculator, DiffResult, MyersDiffCalculator } from 'diff-lib'
+import { DiffResult, MyersDiffCalculator } from 'diff-lib'
 
 @Injectable()
 export class DiffService {
-  private diffCalculator: BaseDiffCalculator
+  private diffCalculator: MyersDiffCalculator
 
   constructor() {
     this.diffCalculator = new MyersDiffCalculator()
   }
 
-  calculateDiff(oldText: string, newText: string) {
+  calculateDiff(oldText: string, newText: string): DiffResult {
     return this.diffCalculator.calculate(oldText, newText)
   }
 
@@ -17,13 +17,16 @@ export class DiffService {
     return this.diffCalculator.apply(text, diff)
   }
 
-  verifyChecksum(text: string, checksum: string): boolean {
-    let hash = 0
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i)
-      hash = (hash << 5) - hash + char
-      hash = hash & hash
-    }
-    return hash.toString(36) === checksum
+  validateDiff(diff: DiffResult): boolean {
+    return (
+      diff &&
+      Array.isArray(diff.operations) &&
+      diff.operations.every(
+        op =>
+          op.type &&
+          ['insert', 'delete', 'retain'].includes(op.type) &&
+          typeof op.text === 'string',
+      )
+    )
   }
 }

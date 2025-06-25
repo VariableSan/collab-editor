@@ -9,10 +9,12 @@ export const useCollab = () => {
   const error = ref<string | null>(null)
 
   let isRemoteUpdate = false
+  let lastSentValue = ''
 
   const sendTextChange = (val: string) => {
-    if (!isRemoteUpdate && wsClient) {
+    if (!isRemoteUpdate && wsClient && val !== lastSentValue) {
       wsClient.sendTextChange(val)
+      lastSentValue = val
     }
   }
 
@@ -47,7 +49,7 @@ export const useCollab = () => {
     wsClient.on('textChange', newText => {
       isRemoteUpdate = true
       textarea.value = newText
-
+      lastSentValue = newText
       nextTick(() => {
         isRemoteUpdate = false
       })

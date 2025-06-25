@@ -9,6 +9,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets'
 import { Server, Socket } from 'socket.io'
+import { DiffMessage } from './collaboration.model'
 import { CollaborationService } from './collaboration.service'
 
 @WebSocketGateway({
@@ -54,55 +55,54 @@ export class CollaborationGateway
 
   @SubscribeMessage('diff')
   handleDiff(
-    @MessageBody() data: any,
+    @MessageBody() message: DiffMessage,
     @ConnectedSocket() client: Socket,
   ): void {
     try {
-      this.logger.log('Received diff:', data)
+      this.logger.log(
+        `Received diff from ${client.id}, version: ${message.data.version}`,
+      )
 
       const result = this.collaborationService.applyDiff(
-        data.data.diff,
-        data.data.version,
+        message.data.diff,
+        message.data.version,
         client.id,
       )
 
       if (result.success) {
-        // Отправляем подтверждение
         client.emit('ack', {
           type: 'ack',
-          id: data.id,
+          id: message.id,
           data: {
             version: result.version,
-            timestamp: data.timestamp,
+            timestamp: message.timestamp,
           },
         })
 
-        // Рассылаем всем кроме отправителя
-        client.broadcast.emit(
-          'message',
-          JSON.stringify({
-            type: 'diff',
-            data: {
-              diff: data.data.diff,
-              version: result.version,
-            },
-          }),
-        )
-
-        // Или напрямую
-        /* client.broadcast.emit('diff', {
-          type: 'diff',
+        client.emit('version-update', {
+          type: 'version-update',
           data: {
-            diff: data.data.diff,
             version: result.version,
           },
-        }) */
+        })
+
+        client.broadcast.emit('diff', {
+          type: 'diff',
+          data: {
+            diff: message.data.diff,
+            version: result.version,
+          },
+        })
       } else {
+        this.logger.warn(
+          `Diff rejected for client ${client.id}: ${result.error}`,
+        )
         this.sendFullSync(client)
       }
     } catch (error) {
       this.logger.error('Error applying diff:', error.message)
       this.sendError(client, 'Failed to apply diff')
+      this.sendFullSync(client)
     }
   }
 

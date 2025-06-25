@@ -83,9 +83,9 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
         },
       }
 
+      console.log('Sending diff with version:', this.state.version)
       this.socket.emit('diff', message)
 
-      this.state.currentText = newText
       this.state.pendingChanges.push({
         diff,
         timestamp: message.timestamp!,
@@ -147,6 +147,13 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
 
     this.socket.on('ack', (message: WSMessage) => {
       this.handleAck(message)
+    })
+
+    this.socket.on('version-update', (message: WSMessage) => {
+      if (message.data?.version !== undefined) {
+        this.state.version = message.data.version
+        console.log('Version updated:', this.state.version)
+      }
     })
 
     this.socket.on('error', (message: WSMessage) => {
@@ -218,6 +225,11 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
       this.state.pendingChanges = this.state.pendingChanges.filter(
         change => change.timestamp > message.data.timestamp,
       )
+    }
+
+    if (message.data?.version !== undefined) {
+      this.state.version = message.data.version
+      console.log('Version updated after ack:', this.state.version)
     }
   }
 

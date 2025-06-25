@@ -1,12 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { DiffResult } from 'diff-lib'
+import { ApplyDiffResult } from './collaboration.model'
 import { DiffService } from './diff.service'
 import { DocumentService } from './document.service'
-
-interface DiffResult {
-  success: boolean
-  version?: number
-  error?: string
-}
 
 @Injectable()
 export class CollaborationService {
@@ -28,31 +24,35 @@ export class CollaborationService {
     return this.getInitialState()
   }
 
-  applyDiff(diff: any, clientVersion: number, clientId: string): DiffResult {
+  applyDiff(
+    diff: DiffResult,
+    clientVersion: number,
+    clientId: string,
+  ): ApplyDiffResult {
     try {
       const currentVersion = this.documentService.getVersion()
 
       if (clientVersion !== currentVersion) {
         this.logger.warn(
-          `Version mismatch: client=${clientVersion}, server=${currentVersion}`,
+          `Version mismatch for client ${clientId}: client=${clientVersion}, server=${currentVersion}`,
         )
-        return { success: false, error: 'Version mismatch' }
+        return {
+          success: false,
+          version: currentVersion,
+          error: 'Version mismatch',
+        }
       }
 
       const currentContent = this.documentService.getContent()
       const newContent = this.diffService.applyDiff(currentContent, diff)
 
-      if (
-        diff.checksum &&
-        !this.diffService.verifyChecksum(newContent, diff.checksum)
-      ) {
-        this.logger.error('Checksum verification failed')
-        return { success: false, error: 'Checksum mismatch' }
-      }
-
       const newVersion = this.documentService.updateContent(
         newContent,
         clientId,
+      )
+
+      this.logger.log(
+        `Applied diff from ${clientId}: v${clientVersion} -> v${newVersion}`,
       )
 
       return {
@@ -60,9 +60,12 @@ export class CollaborationService {
         version: newVersion,
       }
     } catch (error) {
-      this.logger.error(`Error applying diff: ${error.message}`)
+      this.logger.error(
+        `Failed to apply diff from ${clientId}: ${error.message}`,
+      )
       return {
         success: false,
+        version: this.documentService.getVersion(),
         error: error.message,
       }
     }
