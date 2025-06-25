@@ -1,61 +1,42 @@
-import { describe, it, expect } from 'vitest'
-import { MyersDiffCalculator } from '../src'
+import { describe, expect, it } from 'vitest'
+import { MyersDiffCalculator } from '../src/myers-diff'
+import { SharedTextBuffer } from '../src/shared-buffer'
 
-describe('MyersDiffCalculator', () => {
+describe('MyersDiffCalculator with SharedTextBuffer', () => {
   const calculator = new MyersDiffCalculator()
 
-  it('should handle identical texts', () => {
-    const result = calculator.calculate('hello', 'hello')
-    expect(result.operations).toHaveLength(1)
-    expect(result.operations[0]).toEqual({
-      type: 'retain',
-      value: 'hello',
-    })
+  it('should calculate diff from buffer changes', () => {
+    const buffer1 = new SharedTextBuffer({ maxLength: 1000 })
+    const buffer2 = new SharedTextBuffer({ maxLength: 1000 })
+
+    buffer1.setText('Hello World')
+    buffer2.setText('Hello Beautiful World')
+
+    const diff = calculator.calculate(buffer1.getText(), buffer2.getText())
+
+    expect(diff.operations).toHaveLength(3)
+    expect(diff.operations[0]).toEqual({ type: 'retain', value: 'Hello ' })
+    expect(diff.operations[1]).toEqual({ type: 'insert', value: 'Beautiful ' })
+    expect(diff.operations[2]).toEqual({ type: 'retain', value: 'World' })
   })
 
-  it('should handle complete replacement', () => {
-    const result = calculator.calculate('hello', 'world')
-    expect(result.operations).toContainEqual({
-      type: 'delete',
-      value: 'hello',
-    })
-    expect(result.operations).toContainEqual({
-      type: 'insert',
-      value: 'world',
-    })
-  })
+  it('should apply diff to buffer content', () => {
+    const buffer = new SharedTextBuffer({ maxLength: 1000 })
+    buffer.setText('Hello World')
 
-  it('should handle insertions', () => {
-    const result = calculator.calculate('hello', 'hello world')
-    expect(result.operations).toContainEqual({
-      type: 'retain',
-      value: 'hello',
-    })
-    expect(result.operations).toContainEqual({
-      type: 'insert',
-      value: ' world',
-    })
-  })
+    const diff = {
+      operations: [
+        { type: 'retain' as const, value: 'Hello ' },
+        { type: 'insert' as const, value: 'Beautiful ' },
+        { type: 'retain' as const, value: 'World' },
+      ],
+    }
 
-  it('should handle deletions', () => {
-    const result = calculator.calculate('hello world', 'hello')
-    expect(result.operations).toContainEqual({
-      type: 'retain',
-      value: 'hello',
-    })
-    expect(result.operations).toContainEqual({
-      type: 'delete',
-      value: ' world',
-    })
-  })
+    const result = calculator.apply(buffer.getText(), diff)
+    expect(result).toBe('Hello Beautiful World')
 
-  it('should apply diff correctly', () => {
-    const oldText = 'hello world'
-    const newText = 'hello beautiful world'
-
-    const diff = calculator.calculate(oldText, newText)
-    const result = calculator.apply(oldText, diff)
-
-    expect(result).toBe(newText)
+    buffer.setText(result)
+    expect(buffer.getText()).toBe('Hello Beautiful World')
+    expect(buffer.getVersion()).toBe(2)
   })
 })

@@ -1,4 +1,4 @@
-import { DiffResult, DiffCalculator } from '../types'
+import { DiffResult, DiffCalculator } from './types'
 
 export abstract class BaseDiffCalculator implements DiffCalculator {
   abstract calculate(oldText: string, newText: string): DiffResult

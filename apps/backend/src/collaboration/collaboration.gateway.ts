@@ -9,13 +9,14 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets'
 import { Server, Socket } from 'socket.io'
-import { UpdateMessage } from './collaboration.model'
+import { DiffMessage, UpdateMessage } from './collaboration.model'
 import { CollaborationService } from './collaboration.service'
 
 @WebSocketGateway({
   namespace: '/collaborate',
   cors: {
     origin: '*',
+    credentials: true,
   },
 })
 export class CollaborationGateway
@@ -33,7 +34,7 @@ export class CollaborationGateway
 
     const initData = this.collaborationService.getInitialState()
 
-    // Отправляем начальное состояние
+    // Send initial state
     client.emit('init', {
       type: 'init',
       data: initData,
@@ -44,6 +45,47 @@ export class CollaborationGateway
     this.logger.log(`Client disconnected: ${client.id}`)
   }
 
+  @SubscribeMessage('diff')
+  handleDiff(
+    @MessageBody() message: DiffMessage,
+    @ConnectedSocket() client: Socket,
+  ): void {
+    try {
+      this.logger.log(`Received diff from ${client.id}`)
+
+      // Apply diff and get new version
+      const result = this.collaborationService.applyDiff(
+        message.data.diff,
+        client.id,
+      )
+
+      // Acknowledge to sender
+      client.emit('ack', {
+        type: 'ack',
+        id: message.id,
+        data: {
+          version: result.version,
+          timestamp: message.timestamp,
+        },
+      })
+
+      // Broadcast diff to all other clients
+      client.broadcast.emit('diff', {
+        type: 'diff',
+        data: {
+          diff: message.data.diff,
+          version: result.version,
+        },
+      })
+    } catch (error) {
+      this.logger.error('Error handling diff:', error.message)
+      this.sendError(client, 'Failed to apply diff')
+
+      // Send full sync on error
+      this.handleFullSync(client)
+    }
+  }
+
   @SubscribeMessage('update')
   handleUpdate(
     @MessageBody() message: UpdateMessage,
@@ -52,13 +94,13 @@ export class CollaborationGateway
     try {
       this.logger.log(`Received update from ${client.id}`)
 
-      // Просто обновляем состояние и рассылаем всем
+      // Legacy support - still accept full text updates
       const newVersion = this.collaborationService.updateContent(
         message.data.content,
         client.id,
       )
 
-      // Подтверждение отправителю
+      // Acknowledge
       client.emit('ack', {
         type: 'ack',
         id: message.id,
@@ -68,7 +110,7 @@ export class CollaborationGateway
         },
       })
 
-      // Рассылаем всем остальным
+      // Broadcast to others
       client.broadcast.emit('update', {
         type: 'update',
         data: {

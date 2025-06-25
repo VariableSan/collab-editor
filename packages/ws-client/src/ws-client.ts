@@ -2,8 +2,8 @@ import { EventEmitter } from 'eventemitter3'
 import { io, Socket } from 'socket.io-client'
 import {
   ClientState,
-  DiffProvider,
-  InitMessage,
+  DiffMessage,
+  DiffResult,
   WSClientEvents,
   WSClientOptions,
   WSMessage,
@@ -13,7 +13,6 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
   private socket?: Socket
   private options: Required<WSClientOptions>
   private state: ClientState
-  private diffProvider: DiffProvider
 
   constructor(options: WSClientOptions) {
     super()
@@ -24,8 +23,6 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
       maxReconnectAttempts: 5,
       ...options,
     }
-
-    this.diffProvider = options.diffProvider
 
     this.state = {
       connected: false,
@@ -45,7 +42,7 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
         reconnection: true,
         reconnectionDelay: this.options.reconnectInterval,
         reconnectionAttempts: this.options.maxReconnectAttempts,
-        transports: ['websocket', 'polling'],
+        transports: ['websocket'],
       })
 
       this.setupEventHandlers()
@@ -64,27 +61,24 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
     this.emit('disconnect')
   }
 
-  sendTextChange(newText: string): void {
+  sendDiff(diff: DiffResult): void {
     if (!this.state.connected || !this.socket) {
       console.warn('Not connected to server')
       return
     }
 
     try {
-      const diff = this.diffProvider.calculate(this.state.currentText, newText)
-
-      const message = {
+      const message: DiffMessage = {
         id: this.generateId(),
         timestamp: Date.now(),
         data: {
-          content: newText,
+          diff,
           version: this.state.version,
         },
       }
 
-      this.socket.emit('update', message)
+      this.socket.emit('diff', message)
 
-      this.state.currentText = newText
       this.state.pendingChanges.push({
         diff,
         timestamp: message.timestamp!,
@@ -121,85 +115,41 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
       this.handleError(new Error(`Connection error: ${error.message}`))
     })
 
-    this.socket.on('message', (data: string) => {
-      try {
-        const message: WSMessage = JSON.parse(data)
-        this.handleMessage(message)
-      } catch (error) {
-        this.handleError(new Error('Failed to parse message'))
-      }
-    })
-
-    this.socket.on('init', (message: InitMessage) => {
+    this.socket.on('init', (message: any) => {
       this.handleInit(message)
     })
 
-    this.socket.on('diff', (message: WSMessage) => {
-      if (message.type === 'diff' && message.data) {
+    this.socket.on('diff', (message: any) => {
+      if (message.type === 'diff' && message.data?.diff) {
         this.handleDiff(message)
       }
     })
 
-    this.socket.on('full-sync', (message: WSMessage) => {
+    this.socket.on('full-sync', (message: any) => {
       this.handleFullSync(message)
     })
 
-    this.socket.on('ack', (message: WSMessage) => {
+    this.socket.on('ack', (message: any) => {
       this.handleAck(message)
     })
 
-    this.socket.on('version-update', (message: WSMessage) => {
-      if (message.data?.version !== undefined) {
-        this.state.version = message.data.version
-        console.log('Version updated:', this.state.version)
-      }
-    })
-
-    this.socket.on('error', (message: WSMessage) => {
+    this.socket.on('error', (message: any) => {
       if (message.data?.message) {
         this.handleError(new Error(message.data.message))
       }
     })
 
+    // Backwards compatibility - handle update messages
     this.socket.on('update', (message: any) => {
       if (message.data?.content !== undefined) {
-        const diff = this.diffProvider.calculate(
-          this.state.currentText,
-          message.data.content,
-        )
-
         this.state.currentText = message.data.content
         this.state.version = message.data.version
-
-        this.emit('diffReceived', diff)
         this.emit('textChange', message.data.content)
       }
     })
-
-    this.socket.on('pong', () => {})
   }
 
-  private handleMessage(message: WSMessage): void {
-    switch (message.type) {
-      case 'init':
-        this.handleInit(message as InitMessage)
-        break
-      case 'diff':
-        this.handleDiff(message)
-        break
-      case 'full-sync':
-        this.handleFullSync(message)
-        break
-      case 'ack':
-        this.handleAck(message)
-        break
-      case 'error':
-        this.handleError(new Error(message.data?.message || 'Server error'))
-        break
-    }
-  }
-
-  private handleInit(message: InitMessage): void {
+  private handleInit(message: WSMessage): void {
     this.state.currentText = message.data.content
     this.state.version = message.data.version
     this.emit('textChange', this.state.currentText)
@@ -208,19 +158,10 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
 
   private handleDiff(message: WSMessage): void {
     try {
-      const newText = this.diffProvider.apply(
-        this.state.currentText,
-        message.data.diff,
-      )
-
-      this.state.currentText = newText
       this.state.version = message.data.version || this.state.version + 1
-
       this.emit('diffReceived', message.data.diff)
-      this.emit('textChange', newText)
     } catch (error) {
-      this.handleError(new Error('Failed to apply diff'))
-
+      this.handleError(new Error('Failed to handle diff'))
       this.requestFullSync()
     }
   }
@@ -252,12 +193,6 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
       this.socket.emit('full-sync', {
         id: this.generateId(),
       })
-    }
-  }
-
-  sendPing(): void {
-    if (this.socket?.connected) {
-      this.socket.emit('ping')
     }
   }
 

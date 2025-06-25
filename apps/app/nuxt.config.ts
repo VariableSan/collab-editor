@@ -33,9 +33,30 @@ export default defineNuxtConfig({
         target: 'esnext',
       },
     },
+
+    routeRules: {
+      '/**': {
+        headers: {
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+      },
+    },
   },
 
   vite: {
     plugins: [tailwindcss()],
+
+    server: {
+      headers: {
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Opener-Policy': 'same-origin',
+      },
+    },
+
+    // Worker configuration
+    worker: {
+      format: 'es',
+    },
   },
 })

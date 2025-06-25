@@ -1,4 +1,4 @@
-import { DiffOperation, DiffResult } from '../types'
+import { DiffOperation, DiffResult } from './types'
 import { BaseDiffCalculator } from './base-diff'
 
 export class MyersDiffCalculator extends BaseDiffCalculator {

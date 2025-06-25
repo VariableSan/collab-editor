@@ -43,7 +43,6 @@ export interface WSClientOptions {
   namespace?: string
   reconnectInterval?: number
   maxReconnectAttempts?: number
-  diffProvider: DiffProvider
 }
 
 export interface WSClientEvents {
