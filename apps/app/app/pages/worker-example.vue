@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import greenlet from 'greenlet'
 import MyWorker from '~/assets/workers/worker-example?worker'
 
 const numToSum = ref(1000000000)
-const countingMsg = ref([])
+const countingMsg = ref<string[]>([])
 
-const calculate = async (type: 'mainThread' | 'workerVite') => {
+const calculate = async (type: 'mainThread' | 'workerVite' | 'greenlet') => {
   let sum = 0
   const start = performance.now()
 
@@ -15,6 +16,9 @@ const calculate = async (type: 'mainThread' | 'workerVite') => {
     case 'workerVite':
       sum = await sumNumWorkerVite()
       break
+    case 'greenlet':
+      sum = await sumNumGreenLet()
+      break
   }
 
   const end = performance.now()
@@ -23,7 +27,7 @@ const calculate = async (type: 'mainThread' | 'workerVite') => {
   )
 }
 
-const sumNumMainMainThread = () => {
+const sumNumMainMainThread = (): Promise<number> => {
   return new Promise(resolve => {
     console.log('In main thread: calculating sum to ' + numToSum.value)
     let sum = 0
@@ -37,7 +41,7 @@ const sumNumMainMainThread = () => {
   })
 }
 
-const sumNumWorkerVite = () => {
+const sumNumWorkerVite = (): Promise<number> => {
   return new Promise(resolve => {
     const worker = new MyWorker()
     worker.postMessage(numToSum.value)
@@ -53,6 +57,21 @@ const sumNumWorkerVite = () => {
     )
   })
 }
+
+const greenletFn = greenlet((numToSum: number): Promise<number> => {
+  return new Promise(resolve => {
+    console.log('In greenlet thread: calculating sum to ' + numToSum)
+    let sum = 0
+    for (let i = 1; i <= numToSum; i++) {
+      sum += i
+    }
+    console.log(
+      'In greenlet thread: ' + 'The sum of 0 to ' + numToSum + ' is ' + sum,
+    )
+    resolve(sum)
+  })
+})
+const sumNumGreenLet = () => greenletFn(numToSum.value)
 </script>
 
 <template>
@@ -70,6 +89,13 @@ const sumNumWorkerVite = () => {
         @click="() => calculate('workerVite')"
       >
         Sum 0 to {{ numToSum }} (Worker Vite)
+      </button>
+
+      <button
+        class="border py-2 px-4 cursor-pointer"
+        @click="() => calculate('greenlet')"
+      >
+        Sum 0 to {{ numToSum }} (Greenlet)
       </button>
     </div>
 
