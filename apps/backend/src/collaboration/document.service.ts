@@ -1,46 +1,35 @@
-import { Injectable, Logger } from '@nestjs/common'
-
-interface DocumentState {
-  content: string
-  version: number
-  lastModified: Date
-  lastModifiedBy?: string
-}
+import { Injectable } from '@nestjs/common'
 
 @Injectable()
 export class DocumentService {
-  private readonly logger = new Logger(DocumentService.name)
-
-  // In a real application, this should be in the database
-  private document: DocumentState = {
-    content: '',
-    version: 0,
-    lastModified: new Date(),
-  }
+  private content = ''
+  private version = 0
+  private lastModifiedBy: string | null = null
+  private lastModifiedAt: Date | null = null
 
   getContent(): string {
-    return this.document.content
+    return this.content
   }
 
   getVersion(): number {
-    return this.document.version
+    return this.version
   }
 
-  updateContent(content: string, modifiedBy?: string): number {
-    this.document.content = content
-    this.document.version += 1
-    this.document.lastModified = new Date()
-    this.document.lastModifiedBy = modifiedBy
+  updateContent(newContent: string, clientId: string): number {
+    this.content = newContent
+    this.version++
+    this.lastModifiedBy = clientId
+    this.lastModifiedAt = new Date()
 
-    this.logger.log(
-      `Document updated: version=${this.document.version}, ` +
-        `length=${content.length}, by=${modifiedBy || 'unknown'}`,
-    )
-
-    return this.document.version
+    return this.version
   }
 
-  getDocumentState(): DocumentState {
-    return { ...this.document }
+  getMetadata() {
+    return {
+      version: this.version,
+      lastModifiedBy: this.lastModifiedBy,
+      lastModifiedAt: this.lastModifiedAt,
+      contentLength: this.content.length,
+    }
   }
 }

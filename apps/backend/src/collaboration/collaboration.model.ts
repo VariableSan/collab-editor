@@ -1,25 +1,17 @@
-import { DiffResult } from 'diff-lib'
-
 export interface WSMessage {
-  type: 'init' | 'diff' | 'full-sync' | 'error' | 'ack' | 'pong'
+  type: 'init' | 'update' | 'full-sync' | 'error' | 'ack'
   id?: string
   data?: any
   timestamp?: number
 }
 
-export interface DiffMessage {
+export interface UpdateMessage {
   id?: string
   data: {
-    diff: DiffResult
+    content: string
     version: number
   }
   timestamp?: number
-}
-
-export interface ApplyDiffResult {
-  success: boolean
-  version: number
-  error?: string
 }
 
 export interface DocumentState {

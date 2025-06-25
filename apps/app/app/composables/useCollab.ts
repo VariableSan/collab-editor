@@ -9,16 +9,14 @@ export const useCollab = () => {
   const error = ref<string | null>(null)
 
   let isRemoteUpdate = false
-  let lastSentValue = ''
 
   const sendTextChange = (val: string) => {
-    if (!isRemoteUpdate && wsClient && val !== lastSentValue) {
+    if (!isRemoteUpdate && wsClient && isConnected.value) {
       wsClient.sendTextChange(val)
-      lastSentValue = val
     }
   }
 
-  const sendTextChangeDebounced = useDebounceFn(sendTextChange, 500)
+  const sendTextChangeDebounced = useDebounceFn(sendTextChange, 1000)
 
   onMounted(() => {
     const diffProvider = new MyersDiffCalculator()
@@ -47,9 +45,9 @@ export const useCollab = () => {
     })
 
     wsClient.on('textChange', newText => {
+      console.log('Received text update')
       isRemoteUpdate = true
       textarea.value = newText
-      lastSentValue = newText
       nextTick(() => {
         isRemoteUpdate = false
       })

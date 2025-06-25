@@ -2,7 +2,6 @@ import { EventEmitter } from 'eventemitter3'
 import { io, Socket } from 'socket.io-client'
 import {
   ClientState,
-  DiffMessage,
   DiffProvider,
   InitMessage,
   WSClientEvents,
@@ -74,18 +73,18 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
     try {
       const diff = this.diffProvider.calculate(this.state.currentText, newText)
 
-      const message: DiffMessage = {
+      const message = {
         id: this.generateId(),
         timestamp: Date.now(),
         data: {
-          diff,
+          content: newText,
           version: this.state.version,
         },
       }
 
-      console.log('Sending diff with version:', this.state.version)
-      this.socket.emit('diff', message)
+      this.socket.emit('update', message)
 
+      this.state.currentText = newText
       this.state.pendingChanges.push({
         diff,
         timestamp: message.timestamp!,
@@ -159,6 +158,21 @@ export class CollaborativeWSClient extends EventEmitter<WSClientEvents> {
     this.socket.on('error', (message: WSMessage) => {
       if (message.data?.message) {
         this.handleError(new Error(message.data.message))
+      }
+    })
+
+    this.socket.on('update', (message: any) => {
+      if (message.data?.content !== undefined) {
+        const diff = this.diffProvider.calculate(
+          this.state.currentText,
+          message.data.content,
+        )
+
+        this.state.currentText = message.data.content
+        this.state.version = message.data.version
+
+        this.emit('diffReceived', diff)
+        this.emit('textChange', message.data.content)
       }
     })
 
