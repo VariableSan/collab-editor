@@ -1,6 +1,8 @@
 import { MyersDiffCalculator } from 'diff-lib'
 import { CollaborativeWSClient } from 'ws-client'
 
+const DELAY_MS = 300
+
 export const useCollab = () => {
   let wsClient: CollaborativeWSClient | null = null
 
@@ -16,7 +18,7 @@ export const useCollab = () => {
     }
   }
 
-  const sendTextChangeDebounced = useDebounceFn(sendTextChange, 1000)
+  const sendTextChangeDebounced = useDebounceFn(sendTextChange, DELAY_MS)
 
   onMounted(() => {
     const diffProvider = new MyersDiffCalculator()
@@ -24,6 +26,7 @@ export const useCollab = () => {
     wsClient = new CollaborativeWSClient({
       url: `${window.location.hostname}:4000`,
       diffProvider,
+      namespace: '/collaborate',
       reconnectInterval: 3000,
       maxReconnectAttempts: 5,
     })

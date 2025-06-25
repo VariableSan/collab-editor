@@ -3,11 +3,14 @@ export interface DiffProvider {
   apply(text: string, diff: DiffResult): string
 }
 
+export interface DiffOperation {
+  type: 'insert' | 'delete' | 'retain'
+  value: string
+  position?: number
+}
+
 export interface DiffResult {
-  operations: Array<{
-    type: 'insert' | 'delete' | 'retain'
-    value: string
-  }>
+  operations: DiffOperation[]
   checksum?: string
 }
 
