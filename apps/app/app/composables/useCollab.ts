@@ -11,6 +11,7 @@ export const useCollab = () => {
   let wsClient: CollaborativeWSClient | null = null
   let diffWorker: Worker | null = null
   let sharedBuffer: SharedTextBuffer | null = null
+  let sharedPrevBuffer: SharedTextBuffer | null = null
 
   const textarea = ref('')
   const isConnected = ref(false)
@@ -32,11 +33,18 @@ export const useCollab = () => {
         encoding: 'utf-16',
       })
 
-      const sharedData = sharedBuffer.getSharedData()
+      sharedPrevBuffer = new SharedTextBuffer({
+        maxLength: MAX_TEXT_LENGTH,
+        encoding: 'utf-16',
+      })
+
+      const currentData = sharedBuffer.getSharedData()
+      const prevData = sharedPrevBuffer.getSharedData()
 
       diffWorker?.postMessage({
         type: WorkerEventType.InitSharedBuffer,
-        buffer: sharedData.buffer,
+        currentBuffer: currentData.buffer,
+        prevBuffer: prevData.buffer,
         maxLength: MAX_TEXT_LENGTH,
       })
 
@@ -70,7 +78,6 @@ export const useCollab = () => {
 
       diffWorker?.postMessage({
         type: WorkerEventType.CalculateDiffFromBuffer,
-        oldText: prevText,
       })
     } else {
       diffWorker?.postMessage({
@@ -82,6 +89,14 @@ export const useCollab = () => {
   }
 
   const sendTextChangeDebounced = useDebounceFn(sendTextChange, DELAY_MS)
+
+  const updatePrevText = (text: string) => {
+    if (isSharedBufferEnabled.value && sharedPrevBuffer) {
+      sharedPrevBuffer.setText(text)
+    } else {
+      prevText = text
+    }
+  }
 
   const initWsClient = () => {
     wsClient = new CollaborativeWSClient({
@@ -111,10 +126,12 @@ export const useCollab = () => {
       console.log('Received full text update')
       isRemoteUpdate = true
       textarea.value = newText
-      prevText = newText
 
-      if (isSharedBufferEnabled.value && sharedBuffer) {
+      if (isSharedBufferEnabled.value && sharedBuffer && sharedPrevBuffer) {
         sharedBuffer.setText(newText)
+        sharedPrevBuffer.setText(newText)
+      } else {
+        prevText = newText
       }
 
       nextTick(() => {
@@ -126,11 +143,18 @@ export const useCollab = () => {
       console.log('Received diff from server')
       isRemoteUpdate = true
 
-      diffWorker?.postMessage({
-        type: WorkerEventType.ApplyDiff,
-        text: textarea.value,
-        diff,
-      })
+      if (isSharedBufferEnabled.value && sharedBuffer) {
+        diffWorker?.postMessage({
+          type: WorkerEventType.ApplyDiffFromBuffer,
+          diff,
+        })
+      } else {
+        diffWorker?.postMessage({
+          type: WorkerEventType.ApplyDiff,
+          text: textarea.value,
+          diff,
+        })
+      }
     })
 
     wsClient.connect()
@@ -155,7 +179,17 @@ export const useCollab = () => {
             )
             if (hasChanges) {
               wsClient.sendDiff(result)
-              prevText = textarea.value
+
+              if (
+                isSharedBufferEnabled.value &&
+                sharedBuffer &&
+                sharedPrevBuffer
+              ) {
+                const currentText = sharedBuffer.getText()
+                sharedPrevBuffer.setText(currentText)
+              } else {
+                prevText = textarea.value
+              }
             }
           }
           break
@@ -169,11 +203,8 @@ export const useCollab = () => {
             wsClient?.requestFullSync()
           } else {
             textarea.value = result
-            prevText = result
 
-            if (isSharedBufferEnabled.value && sharedBuffer) {
-              sharedBuffer.setText(result)
-            }
+            updatePrevText(result)
           }
 
           nextTick(() => {
