@@ -55,7 +55,6 @@ describe('SharedTextBuffer', () => {
   })
 
   it('should handle concurrent access with Atomics', () => {
-    // This test simulates concurrent access patterns
     const iterations = 100
     let lastVersion = 0
 
@@ -63,7 +62,6 @@ describe('SharedTextBuffer', () => {
       buffer.setText(`Text ${i}`)
       const version = buffer.getVersion()
 
-      // Version should always increase
       expect(version).toBeGreaterThan(lastVersion)
       lastVersion = version
     }

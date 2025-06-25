@@ -12,9 +12,9 @@ export class SharedTextBuffer {
   static readonly META_SIZE = 3
 
   constructor(config: SharedBufferConfig) {
-    const textBufferSize = config.maxLength * 2 // UTF-16
-    const metaBufferSize = SharedTextBuffer.META_SIZE * 4 // Int32
-    const lockBufferSize = 4 // Int32 for Atomics
+    const textBufferSize = config.maxLength * 2
+    const metaBufferSize = SharedTextBuffer.META_SIZE * 4
+    const lockBufferSize = 4
 
     this.buffer = new SharedArrayBuffer(
       textBufferSize + metaBufferSize + lockBufferSize,
@@ -32,7 +32,6 @@ export class SharedTextBuffer {
       1,
     )
 
-    // Initialize
     Atomics.store(this.metaArray, SharedTextBuffer.LENGTH_INDEX, 0)
     Atomics.store(this.metaArray, SharedTextBuffer.VERSION_INDEX, 0)
   }
@@ -69,10 +68,7 @@ export class SharedTextBuffer {
   }
 
   setText(text: string): void {
-    // Acquire lock
-    while (Atomics.compareExchange(this.lockArray, 0, 0, 1) !== 0) {
-      // Spin wait
-    }
+    while (Atomics.compareExchange(this.lockArray, 0, 0, 1) !== 0) {}
 
     try {
       const length = Math.min(text.length, this.textArray.length)
@@ -84,7 +80,6 @@ export class SharedTextBuffer {
       Atomics.store(this.metaArray, SharedTextBuffer.LENGTH_INDEX, length)
       Atomics.add(this.metaArray, SharedTextBuffer.VERSION_INDEX, 1)
     } finally {
-      // Release lock
       Atomics.store(this.lockArray, 0, 0)
     }
   }

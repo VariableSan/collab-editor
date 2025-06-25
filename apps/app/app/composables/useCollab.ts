@@ -1,4 +1,5 @@
 import { SharedTextBuffer } from 'diff-lib'
+import type { DiffResult } from 'ws-client'
 import { CollaborativeWSClient } from 'ws-client'
 import DiffWorker from '~/assets/workers/diff-worker?worker'
 import { WorkerEventType } from '~/types'
@@ -14,52 +15,67 @@ export const useCollab = () => {
   const textarea = ref('')
   const isConnected = ref(false)
   const error = ref<string | null>(null)
+  const isSharedBufferEnabled = ref(false)
 
   let isRemoteUpdate = false
-  let isInitialized = false
+  let prevText = ''
 
-  const initSharedBuffer = () => {
+  const initSharedBuffer = async () => {
     try {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        console.log('SharedArrayBuffer not available, using regular mode')
+        return false
+      }
+
       sharedBuffer = new SharedTextBuffer({
         maxLength: MAX_TEXT_LENGTH,
         encoding: 'utf-16',
       })
 
-      // Transfer SharedArrayBuffer to worker
       const sharedData = sharedBuffer.getSharedData()
+
       diffWorker?.postMessage({
         type: WorkerEventType.InitSharedBuffer,
         buffer: sharedData.buffer,
-        textLength: sharedData.textLength,
-        lockArray: sharedData.lockArray,
-        config: {
-          maxLength: MAX_TEXT_LENGTH,
-        },
+        maxLength: MAX_TEXT_LENGTH,
+      })
+
+      return new Promise<boolean>(resolve => {
+        const handler = (e: MessageEvent) => {
+          if (e.data.type === WorkerEventType.SharedBufferReady) {
+            diffWorker?.removeEventListener('message', handler)
+            isSharedBufferEnabled.value = true
+            console.log('SharedArrayBuffer initialized successfully')
+            resolve(true)
+          }
+        }
+        diffWorker?.addEventListener('message', handler)
+
+        setTimeout(() => {
+          diffWorker?.removeEventListener('message', handler)
+          resolve(false)
+        }, 1000)
       })
     } catch (err) {
       console.error('Failed to initialize SharedArrayBuffer:', err)
-      error.value =
-        'SharedArrayBuffer not supported. Falling back to regular mode.'
+      return false
     }
   }
 
   const sendTextChange = (newText: string) => {
-    if (!isInitialized) return
+    if (isRemoteUpdate || !wsClient || !isConnected.value) return
 
-    if (sharedBuffer) {
-      // Update SharedArrayBuffer
+    if (isSharedBufferEnabled.value && sharedBuffer) {
       sharedBuffer.setText(newText)
-      sharedBuffer.notifyChange()
 
-      // Trigger diff calculation in worker
       diffWorker?.postMessage({
-        type: WorkerEventType.CalculateDiff,
+        type: WorkerEventType.CalculateDiffFromBuffer,
+        oldText: prevText,
       })
     } else {
-      // Fallback to regular diff calculation
       diffWorker?.postMessage({
         type: WorkerEventType.CalculateDiff,
-        oldText: wsClient?.getCurrentText() || '',
+        oldText: prevText,
         newText: newText,
       })
     }
@@ -91,99 +107,89 @@ export const useCollab = () => {
       console.error('WebSocket error:', err)
     })
 
-    wsClient.on('diffReceived', diff => {
-      console.log('Received diff from server')
-      isRemoteUpdate = true
-
-      // Apply diff in worker
-      diffWorker?.postMessage({
-        type: WorkerEventType.ApplyDiff,
-        diff,
-      })
-    })
-
     wsClient.on('textChange', newText => {
-      // Fallback for full text sync (e.g., initial connection)
       console.log('Received full text update')
       isRemoteUpdate = true
       textarea.value = newText
+      prevText = newText
 
-      if (sharedBuffer) {
+      if (isSharedBufferEnabled.value && sharedBuffer) {
         sharedBuffer.setText(newText)
-        sharedBuffer.notifyChange()
       }
-
-      // Update worker's known text
-      diffWorker?.postMessage({
-        type: WorkerEventType.SetText,
-        text: newText,
-      })
 
       nextTick(() => {
         isRemoteUpdate = false
       })
     })
 
+    wsClient.on('diffReceived', (diff: DiffResult) => {
+      console.log('Received diff from server')
+      isRemoteUpdate = true
+
+      diffWorker?.postMessage({
+        type: WorkerEventType.ApplyDiff,
+        text: textarea.value,
+        diff,
+      })
+    })
+
     wsClient.connect()
   }
 
-  const initDiffWorker = () => {
+  const initDiffWorker = async () => {
     diffWorker = new DiffWorker()
 
     diffWorker.addEventListener('message', e => {
       switch (e.data.type) {
-        case WorkerEventType.SharedBufferInitialized: {
-          isInitialized = true
-          console.log('SharedArrayBuffer initialized in worker')
-          break
-        }
-
         case WorkerEventType.CalculateDiffResult: {
-          const { result } = e.data
+          const { result } = e.data as { result: DiffResult }
 
-          if (!isRemoteUpdate && wsClient && isConnected.value) {
-            wsClient.sendDiff(result)
+          if (
+            !isRemoteUpdate &&
+            wsClient &&
+            isConnected.value &&
+            result.operations.length > 0
+          ) {
+            const hasChanges = result.operations.some(
+              op => op.type !== 'retain',
+            )
+            if (hasChanges) {
+              wsClient.sendDiff(result)
+              prevText = textarea.value
+            }
           }
           break
         }
 
         case WorkerEventType.ApplyDiffResult: {
-          const { result } = e.data
-          textarea.value = result
+          const { result, error } = e.data
+
+          if (error) {
+            console.error('Failed to apply diff:', error)
+            wsClient?.requestFullSync()
+          } else {
+            textarea.value = result
+            prevText = result
+
+            if (isSharedBufferEnabled.value && sharedBuffer) {
+              sharedBuffer.setText(result)
+            }
+          }
+
           nextTick(() => {
             isRemoteUpdate = false
           })
           break
         }
-
-        case WorkerEventType.SharedBufferChanged: {
-          // Handle changes detected by worker monitoring
-          const { result } = e.data
-
-          if (!isRemoteUpdate && wsClient && isConnected.value) {
-            wsClient.sendDiff(result)
-          }
-
-          // Update textarea to reflect SharedArrayBuffer content
-          if (sharedBuffer) {
-            const currentText = sharedBuffer.getText()
-            if (currentText !== textarea.value && !isRemoteUpdate) {
-              textarea.value = currentText
-            }
-          }
-          break
-        }
       }
     })
 
-    // Initialize SharedArrayBuffer after worker is ready
-    nextTick(() => {
-      initSharedBuffer()
-    })
+    await nextTick()
+    await initSharedBuffer()
   }
 
-  onMounted(() => {
-    initDiffWorker()
+  onMounted(async () => {
+    await initDiffWorker()
     initWsClient()
   })
 
@@ -193,7 +199,7 @@ export const useCollab = () => {
   })
 
   watch(textarea, newValue => {
-    if (!isRemoteUpdate && isInitialized) {
+    if (!isRemoteUpdate) {
       sendTextChangeDebounced(newValue)
     }
   })
@@ -202,5 +208,6 @@ export const useCollab = () => {
     textarea,
     isConnected,
     error,
+    isSharedBufferEnabled,
   }
 }

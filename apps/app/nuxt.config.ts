@@ -54,7 +54,6 @@ export default defineNuxtConfig({
       },
     },
 
-    // Worker configuration
     worker: {
       format: 'es',
     },

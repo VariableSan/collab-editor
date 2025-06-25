@@ -3,135 +3,102 @@ import { WorkerEventType } from '~/types'
 
 const calculator = new MyersDiffCalculator()
 let sharedBuffer: SharedTextBuffer | null = null
-let lastKnownText = ''
-let lastKnownVersion = 0
-let maxLength = 65536
 
-// Handle messages from main thread
 self.addEventListener('message', (event: MessageEvent) => {
-  const workerType: WorkerEventType = event.data.type
+  const { type } = event.data
 
-  switch (workerType) {
+  switch (type) {
     case WorkerEventType.InitSharedBuffer: {
-      const { buffer, textLength, lockArray, config } = event.data
-      maxLength = config.maxLength
+      const { buffer, maxLength } = event.data
 
-      // Reconstruct SharedTextBuffer from transferred data
-      sharedBuffer = SharedTextBuffer.fromSharedData(
-        { buffer, textLength, lockArray },
-        maxLength,
-      )
+      try {
+        sharedBuffer = SharedTextBuffer.fromSharedData(
+          {
+            buffer,
+            textLength: new Int32Array(buffer, maxLength * 2, 3),
+            lockArray: new Int32Array(buffer, maxLength * 2 + 12, 1),
+          },
+          maxLength,
+        )
 
-      // Initialize with current text
-      lastKnownText = sharedBuffer.getText()
-      lastKnownVersion = sharedBuffer.getVersion()
-
-      // Start monitoring for changes
-      startMonitoring()
-
-      self.postMessage({
-        type: WorkerEventType.SharedBufferInitialized,
-      })
+        self.postMessage({
+          type: WorkerEventType.SharedBufferReady,
+        })
+      } catch (error) {
+        console.error('Failed to init SharedArrayBuffer in worker:', error)
+      }
       break
     }
 
-    case WorkerEventType.CalculateDiff: {
+    case WorkerEventType.CalculateDiffFromBuffer: {
       if (!sharedBuffer) {
-        // Fallback to direct diff calculation
-        const { oldText, newText } = event.data
+        console.error('SharedArrayBuffer not initialized')
+        break
+      }
+
+      const { oldText } = event.data
+      const newText = sharedBuffer.getText()
+
+      try {
         const result = calculator.calculate(oldText, newText)
 
         self.postMessage({
           type: WorkerEventType.CalculateDiffResult,
           result,
         })
-      } else {
-        // Use SharedArrayBuffer
-        const currentText = sharedBuffer.getText()
-        const currentVersion = sharedBuffer.getVersion()
+      } catch (error) {
+        const err = error as Error
+        console.error('Error calculating diff:', error)
+        self.postMessage({
+          type: WorkerEventType.CalculateDiffResult,
+          result: { operations: [] },
+          error: err.message,
+        })
+      }
+      break
+    }
 
-        if (currentText !== lastKnownText) {
-          const result = calculator.calculate(lastKnownText, currentText)
-          lastKnownText = currentText
-          lastKnownVersion = currentVersion
+    case WorkerEventType.CalculateDiff: {
+      const { oldText, newText } = event.data
 
-          self.postMessage({
-            type: WorkerEventType.CalculateDiffResult,
-            result,
-            version: currentVersion,
-          })
-        }
+      try {
+        const result = calculator.calculate(oldText, newText)
+
+        self.postMessage({
+          type: WorkerEventType.CalculateDiffResult,
+          result,
+        })
+      } catch (error) {
+        const err = error as Error
+        console.error('Error calculating diff:', error)
+        self.postMessage({
+          type: WorkerEventType.CalculateDiffResult,
+          result: { operations: [] },
+          error: err.message,
+        })
       }
       break
     }
 
     case WorkerEventType.ApplyDiff: {
-      const { diff } = event.data
+      const { text, diff } = event.data
 
-      if (sharedBuffer) {
-        const currentText = sharedBuffer.getText()
-        const result = calculator.apply(currentText, diff)
-        sharedBuffer.setText(result)
-        sharedBuffer.notifyChange()
-        lastKnownText = result
-        lastKnownVersion = sharedBuffer.getVersion()
-      } else {
-        // Fallback
-        const { text } = event.data
+      try {
         const result = calculator.apply(text, diff)
 
         self.postMessage({
           type: WorkerEventType.ApplyDiffResult,
           result,
         })
-      }
-      break
-    }
-
-    case WorkerEventType.SetText: {
-      const { text } = event.data
-
-      if (sharedBuffer) {
-        sharedBuffer.setText(text)
-        sharedBuffer.notifyChange()
-        lastKnownText = text
-        lastKnownVersion = sharedBuffer.getVersion()
+      } catch (error) {
+        const err = error as Error
+        console.error('Error applying diff:', error)
+        self.postMessage({
+          type: WorkerEventType.ApplyDiffResult,
+          error: err.message,
+        })
       }
       break
     }
   }
 })
-
-// Monitor SharedArrayBuffer for changes
-function startMonitoring() {
-  if (!sharedBuffer) return
-
-  // Use Atomics.wait in a loop
-  const monitor = () => {
-    if (!sharedBuffer) return
-
-    const changed = sharedBuffer.waitForChange(100) // 100ms timeout
-
-    if (changed) {
-      const currentText = sharedBuffer.getText()
-      const currentVersion = sharedBuffer.getVersion()
-
-      if (currentVersion > lastKnownVersion && currentText !== lastKnownText) {
-        const result = calculator.calculate(lastKnownText, currentText)
-        lastKnownText = currentText
-        lastKnownVersion = currentVersion
-
-        self.postMessage({
-          type: WorkerEventType.SharedBufferChanged,
-          result,
-          version: currentVersion,
-        })
-      }
-    }
-
-    // Continue monitoring
-    setTimeout(monitor, 0)
-  }
-
-  monitor()
-}

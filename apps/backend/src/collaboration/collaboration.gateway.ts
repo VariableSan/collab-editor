@@ -34,7 +34,6 @@ export class CollaborationGateway
 
     const initData = this.collaborationService.getInitialState()
 
-    // Send initial state
     client.emit('init', {
       type: 'init',
       data: initData,
@@ -53,13 +52,11 @@ export class CollaborationGateway
     try {
       this.logger.log(`Received diff from ${client.id}`)
 
-      // Apply diff and get new version
       const result = this.collaborationService.applyDiff(
         message.data.diff,
         client.id,
       )
 
-      // Acknowledge to sender
       client.emit('ack', {
         type: 'ack',
         id: message.id,
@@ -69,7 +66,6 @@ export class CollaborationGateway
         },
       })
 
-      // Broadcast diff to all other clients
       client.broadcast.emit('diff', {
         type: 'diff',
         data: {
@@ -81,7 +77,6 @@ export class CollaborationGateway
       this.logger.error('Error handling diff:', error.message)
       this.sendError(client, 'Failed to apply diff')
 
-      // Send full sync on error
       this.handleFullSync(client)
     }
   }
@@ -94,13 +89,11 @@ export class CollaborationGateway
     try {
       this.logger.log(`Received update from ${client.id}`)
 
-      // Legacy support - still accept full text updates
       const newVersion = this.collaborationService.updateContent(
         message.data.content,
         client.id,
       )
 
-      // Acknowledge
       client.emit('ack', {
         type: 'ack',
         id: message.id,
@@ -110,7 +103,6 @@ export class CollaborationGateway
         },
       })
 
-      // Broadcast to others
       client.broadcast.emit('update', {
         type: 'update',
         data: {

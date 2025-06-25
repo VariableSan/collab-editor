@@ -1,8 +1,3 @@
-export interface DiffProvider {
-  calculate(oldText: string, newText: string): DiffResult
-  apply(text: string, diff: DiffResult): string
-}
-
 export interface DiffOperation {
   type: 'insert' | 'delete' | 'retain'
   value: string
@@ -15,7 +10,7 @@ export interface DiffResult {
 }
 
 export interface WSMessage {
-  type: 'init' | 'diff' | 'full-sync' | 'error' | 'ack' | 'pong'
+  type: 'init' | 'diff' | 'full-sync' | 'error' | 'ack'
   id?: string
   data?: any
   timestamp?: number
@@ -28,14 +23,6 @@ export interface DiffMessage {
     version?: number
   }
   timestamp?: number
-}
-
-export interface InitMessage {
-  type: 'init'
-  data: {
-    content: string
-    version: number
-  }
 }
 
 export interface WSClientOptions {
@@ -55,10 +42,5 @@ export interface WSClientEvents {
 
 export interface ClientState {
   connected: boolean
-  currentText: string
   version: number
-  pendingChanges: Array<{
-    diff: DiffResult
-    timestamp: number
-  }>
 }
