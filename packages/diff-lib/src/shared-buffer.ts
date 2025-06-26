@@ -68,7 +68,9 @@ export class SharedTextBuffer {
   }
 
   setText(text: string): void {
-    while (Atomics.compareExchange(this.lockArray, 0, 0, 1) !== 0) {}
+    while (Atomics.compareExchange(this.lockArray, 0, 0, 1) !== 0) {
+      continue // Spin wait
+    }
 
     try {
       const length = Math.min(text.length, this.textArray.length)
