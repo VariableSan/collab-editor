@@ -2,9 +2,9 @@
   "nuxtr.vueFiles.style.alwaysScoped": true,
   "css.lint.unknownAtRules": "ignore",
   "files.associations": {
-    "*.css": "tailwindcss",
+    "*.css": "tailwindcss"
   },
   "editor.quickSuggestions": {
     "strings": "on"
-  },
+  }
 }

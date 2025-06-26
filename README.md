@@ -34,16 +34,19 @@ This monorepo contains four packages:
 ### Using pnpm (Recommended)
 
 1. **Install dependencies:**
+
    ```bash
    pnpm install
    ```
 
 2. **Build packages:**
+
    ```bash
    pnpm build
    ```
 
 3. **Start development servers:**
+
    ```bash
    pnpm dev
    ```
@@ -55,6 +58,7 @@ This monorepo contains four packages:
 ### Using Docker
 
 1. **Start with Docker Compose:**
+
    ```bash
    docker compose up -d --build
    ```
