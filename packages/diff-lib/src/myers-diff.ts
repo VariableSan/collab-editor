@@ -30,7 +30,7 @@ export class MyersDiffCalculator extends BaseDiffCalculator {
     let newEnd = newText.length - 1
 
     while (
-      oldEnd > commonPrefixLength &&
+      oldEnd >= commonPrefixLength &&
       newEnd > commonPrefixLength &&
       oldText[oldEnd] === newText[newEnd]
     ) {

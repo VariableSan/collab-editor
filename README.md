@@ -111,3 +111,4 @@ collab-editor/
 - `pnpm build:packages` - Build all packages
 - `pnpm preview` - Start both frontend and backend in production mode
 - `pnpm lint` - Fix Eslint/Prettier issues automatically
+- `pnpm test` - Run all package tests

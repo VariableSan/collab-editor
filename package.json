@@ -14,7 +14,8 @@
     "lint:eslint:frontend": "pnpm --filter ./apps/app run lint",
     "lint:eslint:backend": "pnpm --filter ./apps/backend run lint",
     "lint:eslint:packages": "pnpm --filter ./packages/* run lint",
-    "lint": "pnpm format && pnpm lint:eslint:frontend && pnpm lint:eslint:backend && pnpm lint:eslint:packages"
+    "lint": "pnpm format && pnpm lint:eslint:frontend && pnpm lint:eslint:backend && pnpm lint:eslint:packages",
+    "test": "pnpm -r --filter ./packages/* test"
   },
   "keywords": [],
   "author": "",
