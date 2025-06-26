@@ -33,13 +33,33 @@ This monorepo contains four packages:
 
 ### Using pnpm (Recommended)
 
+#### Dev Server
+
 1. **Install dependencies:**
 
    ```bash
    pnpm install
    ```
 
-2. **Build packages:**
+2. **Start development servers:**
+
+   ```bash
+   pnpm dev
+   ```
+
+3. **Open your browser:**
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:4000
+
+#### Prod Server
+
+1. **Install dependencies:**
+
+   ```bash
+   pnpm install
+   ```
+
+2. **Build projects:**
 
    ```bash
    pnpm build
@@ -48,7 +68,7 @@ This monorepo contains four packages:
 3. **Start development servers:**
 
    ```bash
-   pnpm dev
+   pnpm preview
    ```
 
 4. **Open your browser:**
@@ -88,5 +108,6 @@ collab-editor/
 
 - `pnpm dev` - Start both frontend and backend in development mode
 - `pnpm build` - Build all packages and applications
+- `pnpm build:packages` - Build all packages
 - `pnpm preview` - Start both frontend and backend in production mode
-- `pnpm format` - Fix Prettier issues automatically
+- `pnpm lint` - Fix Eslint/Prettier issues automatically

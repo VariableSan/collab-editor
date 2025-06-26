@@ -4,10 +4,13 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
+COPY packages/diff-lib/package.json ./packages/diff-lib/
 
 RUN npm install -g pnpm && pnpm install
 
 COPY . .
+
+RUN pnpm --filter ./packages/diff-lib... run build
 
 WORKDIR /app/apps/backend
 
